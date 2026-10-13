@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Workout Log">
+<title>Workout Log</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14213d;--mute:#5d6b82;--line:#d9dee6;--accent:#0f766e;--accent-ink:#fff;--danger:#b42318;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151f;--card:#1a2230;--ink:#e8edf5;--mute:#93a0b5;--line:#2b3547;--accent:#2dd4bf;--accent-ink:#04201c;--danger:#f97066}}
+:root[data-theme="dark"]{--bg:#10151f;--card:#1a2230;--ink:#e8edf5;--mute:#93a0b5;--line:#2b3547;--accent:#2dd4bf;--accent-ink:#04201c;--danger:#f97066}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:8px 0 14px;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+label{display:block;font-size:.85rem;color:var(--mute);margin-bottom:4px}
+input,select,button{font:inherit;color:inherit}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);min-height:44px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.field{margin-top:12px}
+.datebar{display:flex;gap:8px;align-items:end}
+.datebar>div{flex:1}
+button{border:0;border-radius:10px;padding:11px 14px;min-height:44px;cursor:pointer;background:var(--line)}
+.primary{background:var(--accent);color:var(--accent-ink);font-weight:600;width:100%;margin-top:14px}
+.entry{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.entry:last-child{border-bottom:0}
+.entry b{display:block}
+.entry span{color:var(--mute);font-size:.9rem}
+.del{background:transparent;color:var(--danger);padding:8px 10px}
+.empty{color:var(--mute);padding:6px 0}
+.stats{display:flex;gap:16px;color:var(--mute);font-size:.9rem;margin:2px 0 6px}
+.stats b{color:var(--ink)}
+.days{display:flex;flex-wrap:wrap;gap:8px}
+.days button{background:var(--card);border:1px solid var(--line);min-height:40px;padding:6px 12px}
+.days button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+textarea{width:100%;min-height:120px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font:13px/1.4 ui-monospace,Menlo,monospace;color:inherit}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.note{color:var(--mute);font-size:.85rem;margin-top:6px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Workout Log</h1>
+
+  <section class="card" aria-label="Add exercise">
+    <div class="datebar">
+      <div><label for="date">Date</label><input type="date" id="date"></div>
+      <button id="today" type="button">Today</button>
+    </div>
+    <div class="field">
+      <label for="name">Exercise</label>
+      <input id="name" list="names" placeholder="e.g. Bench press" autocomplete="off">
+      <datalist id="names"></datalist>
+    </div>
+    <div class="row">
+      <div><label for="sets">Sets</label><input id="sets" type="number" inputmode="numeric" min="1" value="3"></div>
+      <div><label for="reps">Reps</label><input id="reps" type="number" inputmode="numeric" min="1" value="10"></div>
+      <div><label for="weight">Weight</label><input id="weight" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0"></div>
+    </div>
+    <div class="field">
+      <label for="unit">Weight unit</label>
+      <select id="unit"><option value="kg">kg</option><option value="lb">lb</option></select>
+    </div>
+    <button class="primary" id="add" type="button">Add exercise</button>
+    <div class="note" id="msg" role="status"></div>
+  </section>
+
+  <h2 id="dayTitle">Today</h2>
+  <div class="stats" id="stats"></div>
+  <section class="card" id="list" aria-live="polite"></section>
+
+  <h2>Past workouts</h2>
+  <div class="days" id="days"></div>
+
+  <h2>Backup</h2>
+  <section class="card">
+    <div class="tools">
+      <button id="exp" type="button">Show backup text</button>
+      <button id="copy" type="button">Copy</button>
+      <button id="imp" type="button">Restore from text</button>
+    </div>
+    <textarea id="box" placeholder="Backup text appears here. To restore, paste it here and tap Restore." aria-label="Backup text"></textarea>
+    <div class="note">Your workouts are saved only on this device. Copy the backup text into Notes now and then.</div>
+  </section>
+</main>
+
+<script>
+(function(){
+  var KEY = "workoutlog.v1";
+  var $ = function(id){ return document.getElementById(id); };
+  var data = { entries: [], unit: "kg" };
+  var mem = null;
+
+  function load(){
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var d = JSON.parse(raw); if (d && Array.isArray(d.entries)) data = d; }
+    } catch(e) { if (mem) data = mem; }
+  }
+  function save(){
+    mem = data;
+    try { localStorage.setItem(KEY, JSON.stringify(data)); }
+    catch(e) { say("Could not save on this device. Use Backup to keep a copy."); }
+  }
+  function say(t){ $("msg").textContent = t; }
+  function iso(d){ var z = d.getTimezoneOffset(); return new Date(d.getTime() - z*60000).toISOString().slice(0,10); }
+  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function pretty(ds){
+    var t = iso(new Date());
+    if (ds === t) return "Today";
+    var d = new Date(ds + "T12:00:00");
+    return d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+  }
+
+  function render(){
+    var ds = $("date").value;
+    $("dayTitle").textContent = pretty(ds);
+    var items = data.entries.filter(function(e){ return e.date === ds; });
+    var vol = 0, sets = 0;
+    items.forEach(function(e){ sets += e.sets; vol += e.sets * e.reps * e.weight; });
+    $("stats").innerHTML = items.length
+      ? "<span><b>" + items.length + "</b> exercises</span><span><b>" + sets + "</b> sets</span>" + (vol ? "<span><b>" + Math.round(vol).toLocaleString() + "</b> total lifted</span>" : "")
+      : "";
+    $("list").innerHTML = items.length ? items.map(function(e){
+      var w = e.weight ? " @ " + e.weight + " " + e.unit : " (bodyweight)";
+      return '<div class="entry"><div><b>' + esc(e.name) + '</b><span>' + e.sets + " × " + e.reps + w + '</span></div>' +
+             '<button class="del" data-id="' + e.id + '" aria-label="Delete ' + esc(e.name) + '">Delete</button></div>';
+    }).join("") : '<div class="empty">Nothing logged for this day yet. Add your first exercise above.</div>';
+
+    var dates = {};
+    data.entries.forEach(function(e){ dates[e.date] = 1; });
+    var list = Object.keys(dates).sort().reverse().slice(0, 30);
+    $("days").innerHTML = list.length ? list.map(function(d){
+      return '<button type="button" data-d="' + d + '" aria-pressed="' + (d === ds) + '">' + pretty(d) + '</button>';
+    }).join("") : '<div class="empty">Days you log will show up here.</div>';
+
+    var names = {};
+    data.entries.forEach(function(e){ names[e.name] = 1; });
+    $("names").innerHTML = Object.keys(names).sort().map(function(n){ return '<option value="' + esc(n) + '">'; }).join("");
+  }
+
+  function add(){
+    var name = $("name").value.trim();
+    var sets = parseInt($("sets").value, 10);
+    var reps = parseInt($("reps").value, 10);
+    var weight = parseFloat($("weight").value) || 0;
+    if (!name) { say("Enter an exercise name."); $("name").focus(); return; }
+    if (!(sets > 0) || !(reps > 0)) { say("Sets and reps must be 1 or more."); return; }
+    data.unit = $("unit").value;
+    data.entries.push({ id: Date.now() + "" + Math.floor(Math.random()*1000), date: $("date").value, name: name, sets: sets, reps: reps, weight: weight, unit: data.unit });
+    save();
+    say("Added " + name + ".");
+    $("name").value = "";
+    $("name").focus();
+    render();
+  }
+
+  $("add").onclick = add;
+  $("today").onclick = function(){ $("date").value = iso(new Date()); render(); };
+  $("date").onchange = render;
+  $("list").onclick = function(ev){
+    var b = ev.target.closest(".del"); if (!b) return;
+    data.entries = data.entries.filter(function(e){ return e.id !== b.dataset.id; });
+    save(); render();
+  };
+  $("days").onclick = function(ev){
+    var b = ev.target.closest("button[data-d]"); if (!b) return;
+    $("date").value = b.dataset.d; render();
+  };
+  $("exp").onclick = function(){ $("box").value = JSON.stringify(data); $("box").select(); };
+  $("copy").onclick = function(){
+    if (!$("box").value) $("box").value = JSON.stringify(data);
+    $("box").select();
+    try { navigator.clipboard.writeText($("box").value).then(function(){ say("Backup copied."); }, function(){ document.execCommand("copy"); say("Backup copied."); }); }
+    catch(e) { try { document.execCommand("copy"); say("Backup copied."); } catch(e2) { say("Select the text and copy it manually."); } }
+  };
+  $("imp").onclick = function(){
+    try {
+      var d = JSON.parse($("box").value);
+      if (!d || !Array.isArray(d.entries)) throw 0;
+      data = d; save(); render(); say("Restored " + d.entries.length + " entries.");
+    } catch(e) { say("That text isn't a valid backup. Paste the full backup text and try again."); }
+  };
+
+  load();
+  $("unit").value = data.unit || "kg";
+  $("date").value = iso(new Date());
+  render();
+})();
+</script>
+</body>
+</html>
